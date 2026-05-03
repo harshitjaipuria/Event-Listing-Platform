@@ -15,7 +15,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { events } from "@/lib/data";
-import { useAuth } from "@/components/AuthProvider";
 import { CalendarDays, Clock, MapPin, Search, SlidersHorizontal, Sparkles, User } from "lucide-react";
 
 const departments = ["All", "Technology", "Management", "Science", "General"];
@@ -31,6 +30,8 @@ const dateFilters = [
   { value: "past", label: "Past" },
   { value: "all", label: "All dates" },
 ];
+const yearOptions = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"];
+const deptOptions = ["Technology", "Management", "Science", "General", "Other"];
 
 function getCountdown(dateString) {
   const target = new Date(dateString).getTime();
@@ -74,21 +75,30 @@ function countActiveFilters(department, type, dateFilter) {
   return n;
 }
 
+const emptyForm = { name: "", email: "", mobile: "", rollNumber: "", year: "", department: "" };
+
 export default function ExplorePage() {
-  const { openSignIn, openSignUp } = useAuth();
   const [query, setQuery] = useState("");
   const [department, setDepartment] = useState("All");
   const [type, setType] = useState("All");
   const [dateFilter, setDateFilter] = useState("upcoming");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
-  const [registerState, setRegisterState] = useState({ status: "idle", message: "" });
+
+  // Registration form state
+  const [showRegForm, setShowRegForm] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [formErrors, setFormErrors] = useState({});
+  const [submitState, setSubmitState] = useState({ status: "idle", message: "" });
 
   const activeFilterCount = countActiveFilters(department, type, dateFilter);
 
   useEffect(() => {
     if (!selectedEvent) {
-      setRegisterState({ status: "idle", message: "" });
+      setShowRegForm(false);
+      setForm(emptyForm);
+      setFormErrors({});
+      setSubmitState({ status: "idle", message: "" });
     }
   }, [selectedEvent]);
 
@@ -119,37 +129,56 @@ export default function ExplorePage() {
     setDateFilter("upcoming");
   };
 
-  async function handleRegister() {
-    if (!selectedEvent) return;
-    setRegisterState({ status: "loading", message: "" });
+  function validateForm() {
+    const errors = {};
+    if (!form.name.trim()) errors.name = "Name is required";
+    if (!form.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errors.email = "Valid email required";
+    if (!form.mobile.trim() || !/^\d{10}$/.test(form.mobile)) errors.mobile = "10-digit mobile number required";
+    if (!form.rollNumber.trim()) errors.rollNumber = "Roll number is required";
+    if (!form.year) errors.year = "Year is required";
+    if (!form.department) errors.department = "Department is required";
+    return errors;
+  }
+
+  async function handleRegisterSubmit(e) {
+    e.preventDefault();
+    const errors = validateForm();
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+    setFormErrors({});
+    setSubmitState({ status: "loading", message: "" });
+
     try {
       const base = typeof window !== "undefined" ? window.location.origin : "";
       const res = await fetch(`${base}/api/register`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ eventId: selectedEvent._id, status: "registered" }),
+        body: JSON.stringify({ eventId: selectedEvent._id, ...form, status: "registered" }),
       });
       const data = await res.json().catch(() => ({}));
-      if (res.status === 401) {
-        setRegisterState({
-          status: "error",
-          message: "Sign in to register for this event.",
-        });
-        return;
-      }
       if (!res.ok) {
-        setRegisterState({
-          status: "error",
-          message: data.message || data.error || "Registration failed. Try again.",
-        });
+        setSubmitState({ status: "error", message: data.message || "Registration failed. Try again." });
         return;
       }
-      setRegisterState({ status: "success", message: "You’re registered for this event." });
+      setSubmitState({ status: "success", message: "🎉 You're registered! See you at the event." });
+      setForm(emptyForm);
     } catch {
-      setRegisterState({ status: "error", message: "Network error. Try again." });
+      setSubmitState({ status: "error", message: "Network error. Try again." });
     }
   }
+
+  function handleFieldChange(field, value) {
+    setForm((f) => ({ ...f, [field]: value }));
+    if (formErrors[field]) setFormErrors((e) => ({ ...e, [field]: undefined }));
+  }
+
+  const inputCls = (field) =>
+    `w-full rounded-lg border px-3 py-2 text-sm bg-white/[0.04] text-white placeholder:text-slate-500 outline-none transition-colors focus:ring-1 focus:ring-violet-500/60 ${
+      formErrors[field] ? "border-red-400/60" : "border-white/10 focus:border-violet-400/40"
+    }`;
 
   return (
     <DarkPageShell>
@@ -169,6 +198,7 @@ export default function ExplorePage() {
           </p>
         </div>
 
+        {/* Search & Filter Bar */}
         <Card className="mb-10 border-white/10 bg-white/[0.03] backdrop-blur-xl">
           <CardContent className="p-3 sm:p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
@@ -212,11 +242,7 @@ export default function ExplorePage() {
                     <div className="mb-3 flex items-center justify-between border-b border-white/10 pb-3">
                       <span className="text-sm font-semibold text-white">Filter events</span>
                       {activeFilterCount > 0 ? (
-                        <button
-                          type="button"
-                          onClick={resetFilters}
-                          className="text-xs font-medium text-violet-300 hover:underline"
-                        >
+                        <button type="button" onClick={resetFilters} className="text-xs font-medium text-violet-300 hover:underline">
                           Reset
                         </button>
                       ) : null}
@@ -251,15 +277,12 @@ export default function ExplorePage() {
           </CardContent>
         </Card>
 
+        {/* Event Detail Dialog */}
         <Dialog open={!!selectedEvent} onOpenChange={(open) => !open && setSelectedEvent(null)}>
           {selectedEvent ? (
             <DialogContent className="flex h-auto max-h-[92vh] min-h-[min(52vh,480px)] w-[calc(100%-2rem)] max-w-lg flex-col gap-0 overflow-hidden p-0 sm:min-h-[min(58vh,560px)] sm:max-w-xl md:max-w-2xl md:min-h-[min(62vh,620px)] lg:max-w-3xl lg:min-h-[min(65vh,680px)]">
               <div className="relative h-44 shrink-0 overflow-hidden sm:h-52 md:h-56 lg:h-64">
-                <img
-                  src={selectedEvent.bannerImage}
-                  alt={selectedEvent.title}
-                  className="h-full w-full object-cover"
-                />
+                <img src={selectedEvent.bannerImage} alt={selectedEvent.title} className="h-full w-full object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#14151c] to-transparent" />
                 <div className="absolute bottom-3 left-4 right-14 flex flex-wrap gap-2">
                   <Badge className="border-0 bg-black/55 text-white backdrop-blur-sm">{selectedEvent.type}</Badge>
@@ -270,124 +293,217 @@ export default function ExplorePage() {
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-2 pt-2">
-                <DialogHeader className="space-y-3 px-0 pb-0 pt-2 text-left">
-                  <DialogTitle className="pr-8 text-xl text-white">{selectedEvent.title}</DialogTitle>
-                  <DialogDescription asChild>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedEvent.tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="rounded-full border border-violet-400/25 bg-violet-500/15 px-2.5 py-0.5 text-xs font-medium text-violet-200"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  </DialogDescription>
-                </DialogHeader>
+                {!showRegForm ? (
+                  /* ── Event Detail View ── */
+                  <>
+                    <DialogHeader className="space-y-3 px-0 pb-0 pt-2 text-left">
+                      <DialogTitle className="pr-8 text-xl text-white">{selectedEvent.title}</DialogTitle>
+                      <DialogDescription asChild>
+                        <div className="flex flex-wrap gap-2">
+                          {selectedEvent.tags.map((tag) => (
+                            <span
+                              key={tag}
+                              className="rounded-full border border-violet-400/25 bg-violet-500/15 px-2.5 py-0.5 text-xs font-medium text-violet-200"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </DialogDescription>
+                    </DialogHeader>
 
-                <p className="mt-4 text-sm leading-relaxed text-slate-300">{selectedEvent.description}</p>
+                    <p className="mt-4 text-sm leading-relaxed text-slate-300">{selectedEvent.description}</p>
 
-                <div className="mt-5 grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
-                  <div className="flex items-start gap-2">
-                    <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-violet-400" />
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Date</p>
-                      <p>{new Date(selectedEvent.date).toLocaleDateString(undefined, { dateStyle: "long" })}</p>
+                    <div className="mt-5 grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
+                      <div className="flex items-start gap-2">
+                        <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-violet-400" />
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Date</p>
+                          <p>{new Date(selectedEvent.date).toLocaleDateString(undefined, { dateStyle: "long" })}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <Clock className="mt-0.5 h-4 w-4 shrink-0 text-violet-400" />
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Time</p>
+                          <p>{selectedEvent.time}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2 sm:col-span-2">
+                        <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-violet-400" />
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Venue</p>
+                          <p>{selectedEvent.venue}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2 sm:col-span-2">
+                        <User className="mt-0.5 h-4 w-4 shrink-0 text-violet-400" />
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Organizer</p>
+                          <p>{selectedEvent.organizer}</p>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <Clock className="mt-0.5 h-4 w-4 shrink-0 text-violet-400" />
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Time</p>
-                      <p>{selectedEvent.time}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-2 sm:col-span-2">
-                    <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-violet-400" />
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Venue</p>
-                      <p>{selectedEvent.venue}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-2 sm:col-span-2">
-                    <User className="mt-0.5 h-4 w-4 shrink-0 text-violet-400" />
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Organizer</p>
-                      <p>{selectedEvent.organizer}</p>
-                    </div>
-                  </div>
-                </div>
 
-                <div className="mt-5 flex flex-wrap items-center gap-2">
-                  <Badge variant="outline" className="border-white/20 text-slate-300">
-                    {selectedEvent.department}
-                  </Badge>
-                  <span className="text-xs text-slate-500">
-                    {selectedEvent.interestedCount ?? 0} students interested
-                  </span>
-                  <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-slate-200">
-                    {getCountdown(selectedEvent.date)}
-                  </span>
-                </div>
-
-                {registerState.message ? (
-                  <p
-                    className={`mt-4 text-sm ${
-                      registerState.status === "success"
-                        ? "text-emerald-400"
-                        : registerState.status === "error"
-                          ? "text-amber-300"
-                          : "text-slate-400"
-                    }`}
-                  >
-                    {registerState.message}
-                    {registerState.status === "error" && registerState.message.includes("Sign in") ? (
-                      <span className="mt-2 flex flex-wrap gap-4">
-                        <button
-                          type="button"
-                          className="font-semibold text-violet-300 underline"
-                          onClick={() => {
-                            setSelectedEvent(null);
-                            openSignIn();
-                          }}
-                        >
-                          Sign in
-                        </button>
-                        <button
-                          type="button"
-                          className="font-semibold text-violet-300 underline"
-                          onClick={() => {
-                            setSelectedEvent(null);
-                            openSignUp();
-                          }}
-                        >
-                          Sign up
-                        </button>
+                    <div className="mt-5 flex flex-wrap items-center gap-2">
+                      <Badge variant="outline" className="border-white/20 text-slate-300">
+                        {selectedEvent.department}
+                      </Badge>
+                      <span className="text-xs text-slate-500">{selectedEvent.interestedCount ?? 0} students interested</span>
+                      <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-slate-200">
+                        {getCountdown(selectedEvent.date)}
                       </span>
-                    ) : null}
-                  </p>
-                ) : null}
+                    </div>
+                  </>
+                ) : (
+                  /* ── Registration Form View ── */
+                  <>
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={() => { setShowRegForm(false); setSubmitState({ status: "idle", message: "" }); setFormErrors({}); }}
+                        className="mb-3 text-xs font-medium text-violet-400 hover:text-violet-300"
+                      >
+                        ← Back to event details
+                      </button>
+                      <h3 className="text-lg font-semibold text-white">Register for this event</h3>
+                      <p className="mt-0.5 text-xs text-slate-400">{selectedEvent.title}</p>
+                    </div>
+
+                    {submitState.status === "success" ? (
+                      <div className="mt-6 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-5 py-6 text-center">
+                        <p className="text-2xl">🎉</p>
+                        <p className="mt-2 font-semibold text-emerald-300">{submitState.message}</p>
+                        <Button
+                          type="button"
+                          className="mt-4 bg-white/10 text-white hover:bg-white/15"
+                          onClick={() => setSelectedEvent(null)}
+                        >
+                          Close
+                        </Button>
+                      </div>
+                    ) : (
+                      <form onSubmit={handleRegisterSubmit} className="mt-4 space-y-3" noValidate>
+                        {/* Name */}
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-slate-400">Full Name</label>
+                          <input
+                            type="text"
+                            placeholder="Harshit Jaipuria"
+                            value={form.name}
+                            onChange={(e) => handleFieldChange("name", e.target.value)}
+                            className={inputCls("name")}
+                          />
+                          {formErrors.name && <p className="mt-1 text-[11px] text-red-400">{formErrors.name}</p>}
+                        </div>
+
+                        {/* Email & Mobile */}
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-400">Email</label>
+                            <input
+                              type="email"
+                              placeholder="you@gla.ac.in"
+                              value={form.email}
+                              onChange={(e) => handleFieldChange("email", e.target.value)}
+                              className={inputCls("email")}
+                            />
+                            {formErrors.email && <p className="mt-1 text-[11px] text-red-400">{formErrors.email}</p>}
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-400">Mobile</label>
+                            <input
+                              type="tel"
+                              placeholder="9876543210"
+                              maxLength={10}
+                              value={form.mobile}
+                              onChange={(e) => handleFieldChange("mobile", e.target.value.replace(/\D/, ""))}
+                              className={inputCls("mobile")}
+                            />
+                            {formErrors.mobile && <p className="mt-1 text-[11px] text-red-400">{formErrors.mobile}</p>}
+                          </div>
+                        </div>
+
+                        {/* Roll Number */}
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-slate-400">Roll Number</label>
+                          <input
+                            type="text"
+                            placeholder="2210990100XX"
+                            value={form.rollNumber}
+                            onChange={(e) => handleFieldChange("rollNumber", e.target.value)}
+                            className={inputCls("rollNumber")}
+                          />
+                          {formErrors.rollNumber && <p className="mt-1 text-[11px] text-red-400">{formErrors.rollNumber}</p>}
+                        </div>
+
+                        {/* Year & Department */}
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-400">Year</label>
+                            <select
+                              value={form.year}
+                              onChange={(e) => handleFieldChange("year", e.target.value)}
+                              className={inputCls("year") + " cursor-pointer"}
+                            >
+                              <option value="" className="bg-[#14151c]">Select year</option>
+                              {yearOptions.map((y) => (
+                                <option key={y} value={y} className="bg-[#14151c]">{y}</option>
+                              ))}
+                            </select>
+                            {formErrors.year && <p className="mt-1 text-[11px] text-red-400">{formErrors.year}</p>}
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-400">Department</label>
+                            <select
+                              value={form.department}
+                              onChange={(e) => handleFieldChange("department", e.target.value)}
+                              className={inputCls("department") + " cursor-pointer"}
+                            >
+                              <option value="" className="bg-[#14151c]">Select department</option>
+                              {deptOptions.map((d) => (
+                                <option key={d} value={d} className="bg-[#14151c]">{d}</option>
+                              ))}
+                            </select>
+                            {formErrors.department && <p className="mt-1 text-[11px] text-red-400">{formErrors.department}</p>}
+                          </div>
+                        </div>
+
+                        {submitState.status === "error" && (
+                          <p className="rounded-lg border border-red-400/20 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+                            {submitState.message}
+                          </p>
+                        )}
+
+                        <Button
+                          type="submit"
+                          className="mt-2 w-full bg-violet-400 text-[#24085e] hover:bg-violet-300"
+                          disabled={submitState.status === "loading"}
+                        >
+                          {submitState.status === "loading" ? "Submitting…" : "Confirm Registration"}
+                        </Button>
+                      </form>
+                    )}
+                  </>
+                )}
               </div>
 
-              <DialogFooter className="mt-0 flex-col sm:flex-row">
-                <Button
-                  type="button"
-                  className="w-full bg-violet-400 text-[#24085e] hover:bg-violet-300"
-                  disabled={registerState.status === "loading" || registerState.status === "success"}
-                  onClick={handleRegister}
-                >
-                  {registerState.status === "loading"
-                    ? "Registering…"
-                    : registerState.status === "success"
-                      ? "Registered"
-                      : "Register"}
-                </Button>
-              </DialogFooter>
+              {!showRegForm && submitState.status !== "success" && (
+                <DialogFooter className="mt-0 flex-col sm:flex-row">
+                  <Button
+                    type="button"
+                    className="w-full bg-violet-400 text-[#24085e] hover:bg-violet-300"
+                    onClick={() => setShowRegForm(true)}
+                  >
+                    Register
+                  </Button>
+                </DialogFooter>
+              )}
             </DialogContent>
           ) : null}
         </Dialog>
 
+        {/* Event Cards */}
         {filteredEvents.length === 0 ? (
           <Card className="border-dashed border-white/15 bg-white/[0.02]">
             <CardContent className="py-16 text-center">
@@ -395,10 +511,7 @@ export default function ExplorePage() {
               <p className="mt-2 text-sm text-slate-500">Try clearing search or widening your filters.</p>
               <Button
                 className="mt-6 bg-violet-400 text-[#24085e] hover:bg-violet-300"
-                onClick={() => {
-                  setQuery("");
-                  resetFilters();
-                }}
+                onClick={() => { setQuery(""); resetFilters(); }}
               >
                 Reset all
               </Button>
@@ -421,11 +534,7 @@ export default function ExplorePage() {
                 className="h-full cursor-pointer overflow-hidden border-white/10 bg-white/[0.03] backdrop-blur-xl outline-none transition-all duration-300 hover:-translate-y-1 hover:border-violet-400/25 hover:shadow-[0_0_28px_rgba(139,92,246,0.15)] focus-visible:ring-2 focus-visible:ring-violet-500/50"
               >
                 <div className="relative h-44 overflow-hidden">
-                  <img
-                    src={event.bannerImage}
-                    alt={event.title}
-                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
+                  <img src={event.bannerImage} alt={event.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#0f1015] via-transparent to-transparent opacity-80" />
                   <div className="absolute left-3 top-3 flex flex-wrap gap-2">
                     <Badge className="border-0 bg-black/50 text-xs text-white backdrop-blur-sm">{event.type}</Badge>
