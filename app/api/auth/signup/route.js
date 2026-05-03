@@ -1,12 +1,39 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import mongoose from "mongoose";
 import { connectDB } from "@/lib/db";
 import User from "@/lib/models/User";
 import { createToken } from "@/lib/utils/auth";
 
+function formatValidationError(error) {
+  if (error instanceof mongoose.Error.ValidationError && error.errors) {
+    return Object.values(error.errors).map((e) => e.message);
+  }
+  return [];
+}
+
 export async function POST(request) {
   try {
-    const body = await request.json();
+    if (!process.env.MONGODB_URI?.trim()) {
+      return NextResponse.json(
+        { message: "Server misconfiguration: MONGODB_URI is not set. Add it to .env and restart the dev server." },
+        { status: 500 }
+      );
+    }
+    if (!process.env.JWT_SECRET?.trim()) {
+      return NextResponse.json(
+        { message: "Server misconfiguration: JWT_SECRET is not set. Add it to .env and restart the dev server." },
+        { status: 500 }
+      );
+    }
+
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ message: "Invalid request body (expected JSON)" }, { status: 400 });
+    }
+
     const { name, rollNumber, mobile, email, gender, year, password } = body;
 
     if (!password || String(password).length < 6) {
@@ -41,7 +68,7 @@ export async function POST(request) {
       mobile: mobile.trim(),
       email: email.trim().toLowerCase(),
       gender,
-      year: year.trim(),
+      year: String(year).trim(),
       passwordHash,
     });
 
@@ -63,6 +90,29 @@ export async function POST(request) {
       const field = Object.keys(error.keyPattern || {})[0] || "field";
       return NextResponse.json({ message: `Duplicate ${field}` }, { status: 409 });
     }
-    return NextResponse.json({ message: "Signup failed", error: error.message }, { status: 400 });
+
+    const details = formatValidationError(error);
+    const isMongoNetwork =
+      error.name === "MongooseServerSelectionError" ||
+      /MongoNetworkError|ECONNREFUSED|ENOTFOUND|SSL|authentication failed/i.test(String(error.message));
+
+    if (isMongoNetwork) {
+      return NextResponse.json(
+        {
+          message: "Cannot reach MongoDB. Check Atlas Network Access (allow your IP or 0.0.0.0/0 for dev), database user password, and MONGODB_URI.",
+          error: error.message,
+        },
+        { status: 503 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        message: "Signup failed",
+        error: error.message,
+        ...(details.length ? { details } : {}),
+      },
+      { status: 400 }
+    );
   }
 }
