@@ -11,7 +11,3 @@ body {
   background: var(--background);
   color: var(--foreground);
 }
-
-.container-padded {
-  @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
-}
