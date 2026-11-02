@@ -8,10 +8,5 @@ export default function LoginPage() {
   const { openSignIn } = useAuth();
   const router = useRouter();
 
-  useEffect(() => {
-    openSignIn();
-    router.replace("/");
-  }, [openSignIn, router]);
-
   return null;
 }
