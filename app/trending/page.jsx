@@ -15,16 +15,6 @@ import { events } from "@/lib/data";
 import { CalendarDays, Clock, Flame, MapPin, User } from "lucide-react";
 
 const trending = events.filter((e) => e.trending);
-
-function getCountdown(dateString) {
-  const target = new Date(dateString).getTime();
-  const now = Date.now();
-  const diff = Math.max(0, target - now);
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
-  return `${days}d ${hours}h left`;
-}
-
 export default function TrendingPage() {
   const [selectedEvent, setSelectedEvent] = useState(null);
 
