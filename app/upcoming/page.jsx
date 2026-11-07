@@ -22,10 +22,6 @@ function getCountdown(dateString) {
   const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
   return `${days}d ${hours}h left`;
 }
-
-export default function UpcomingPage() {
-  const [selectedEvent, setSelectedEvent] = useState(null);
-
   const now = new Date();
   const upcoming = events
     .filter((e) => new Date(e.date) >= now)
