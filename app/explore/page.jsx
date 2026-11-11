@@ -128,18 +128,6 @@ export default function ExplorePage() {
     setType("All");
     setDateFilter("upcoming");
   };
-
-  function validateForm() {
-    const errors = {};
-    if (!form.name.trim()) errors.name = "Name is required";
-    if (!form.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errors.email = "Valid email required";
-    if (!form.mobile.trim() || !/^\d{10}$/.test(form.mobile)) errors.mobile = "10-digit mobile number required";
-    if (!form.rollNumber.trim()) errors.rollNumber = "Roll number is required";
-    if (!form.year) errors.year = "Year is required";
-    if (!form.department) errors.department = "Department is required";
-    return errors;
-  }
-
   async function handleRegisterSubmit(e) {
     e.preventDefault();
     const errors = validateForm();
